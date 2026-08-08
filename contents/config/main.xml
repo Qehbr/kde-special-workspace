@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0
+      http://www.kde.org/standards/kcfg/1.0/kcfg.xsd" >
+    <kcfgfile name=""/>
+    <group name="">
+
+        <entry name="slotCount" type="Int">
+            <default>4</default>
+            <min>1</min>
+            <max>12</max>
+        </entry>
+
+        <entry name="widthRatio" type="Int">
+            <default>75</default><min>10</min><max>100</max>
+        </entry>
+
+        <entry name="heightRatio" type="Int">
+            <default>83</default><min>10</min><max>100</max>
+        </entry>
+
+        <entry name="placeWindows" type="Bool"><default>true</default></entry>
+        <entry name="centerOnActiveScreen" type="Bool"><default>true</default></entry>
+        <entry name="followCurrentDesktop" type="Bool"><default>true</default></entry>
+        <entry name="showOsd" type="Bool"><default>true</default></entry>
+
+        <entry name="hideMode" type="Int"><default>0</default><min>0</min><max>1</max></entry>
+        <entry name="hideFromTaskbar" type="Bool"><default>true</default></entry>
+        <entry name="specialDesktop" type="Int"><default>-1</default><min>-1</min><max>19</max></entry>
+
+        <entry name="slot1Matcher" type="String"><default></default></entry>
+        <entry name="slot1Width" type="Int"><default>0</default><min>0</min><max>100</max></entry>
+        <entry name="slot1Height" type="Int"><default>0</default><min>0</min><max>100</max></entry>
+
+        <entry name="slot2Matcher" type="String"><default></default></entry>
+        <entry name="slot2Width" type="Int"><default>0</default><min>0</min><max>100</max></entry>
+        <entry name="slot2Height" type="Int"><default>0</default><min>0</min><max>100</max></entry>
+
+        <entry name="slot3Matcher" type="String"><default></default></entry>
+        <entry name="slot3Width" type="Int"><default>0</default><min>0</min><max>100</max></entry>
+        <entry name="slot3Height" type="Int"><default>0</default><min>0</min><max>100</max></entry>
+
+        <entry name="slot4Matcher" type="String"><default></default></entry>
+        <entry name="slot4Width" type="Int"><default>0</default><min>0</min><max>100</max></entry>
+        <entry name="slot4Height" type="Int"><default>0</default><min>0</min><max>100</max></entry>
+
+        <entry name="slot5Matcher" type="String"><default></default></entry>
+        <entry name="slot5Width" type="Int"><default>0</default><min>0</min><max>100</max></entry>
+        <entry name="slot5Height" type="Int"><default>0</default><min>0</min><max>100</max></entry>
+
+        <entry name="slot6Matcher" type="String"><default></default></entry>
+        <entry name="slot6Width" type="Int"><default>0</default><min>0</min><max>100</max></entry>
+        <entry name="slot6Height" type="Int"><default>0</default><min>0</min><max>100</max></entry>
+
+        <entry name="slot7Matcher" type="String"><default></default></entry>
+        <entry name="slot7Width" type="Int"><default>0</default><min>0</min><max>100</max></entry>
+        <entry name="slot7Height" type="Int"><default>0</default><min>0</min><max>100</max></entry>
+
+        <entry name="slot8Matcher" type="String"><default></default></entry>
+        <entry name="slot8Width" type="Int"><default>0</default><min>0</min><max>100</max></entry>
+        <entry name="slot8Height" type="Int"><default>0</default><min>0</min><max>100</max></entry>
+
+        <entry name="slot9Matcher" type="String"><default></default></entry>
+        <entry name="slot9Width" type="Int"><default>0</default><min>0</min><max>100</max></entry>
+        <entry name="slot9Height" type="Int"><default>0</default><min>0</min><max>100</max></entry>
+
+        <entry name="slot10Matcher" type="String"><default></default></entry>
+        <entry name="slot10Width" type="Int"><default>0</default><min>0</min><max>100</max></entry>
+        <entry name="slot10Height" type="Int"><default>0</default><min>0</min><max>100</max></entry>
+
+        <entry name="slot11Matcher" type="String"><default></default></entry>
+        <entry name="slot11Width" type="Int"><default>0</default><min>0</min><max>100</max></entry>
+        <entry name="slot11Height" type="Int"><default>0</default><min>0</min><max>100</max></entry>
+
+        <entry name="slot12Matcher" type="String"><default></default></entry>
+        <entry name="slot12Width" type="Int"><default>0</default><min>0</min><max>100</max></entry>
+        <entry name="slot12Height" type="Int"><default>0</default><min>0</min><max>100</max></entry>
+
+    </group>
+</kcfg>

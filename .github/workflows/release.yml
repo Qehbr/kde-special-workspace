@@ -1,0 +1,89 @@
+name: Release
+
+# Build the .kwinscript and publish a GitHub Release whenever a version tag is
+# pushed (e.g. `git tag v1.0 && git push origin v1.0`). Can also be run manually
+# from the Actions tab (build-only, no release) via "Run workflow".
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate package contents
+        run: |
+          python3 -c "import json; json.load(open('metadata.json'))"
+          python3 -c "import xml.dom.minidom as m; m.parse('contents/config/main.xml'); m.parse('contents/ui/config.ui')"
+          test -f contents/code/main.js
+          echo "Package structure looks valid."
+
+      - name: Check that every config key has a widget
+        run: |
+          python3 - <<'EOF'
+          import re, sys
+          keys = set(re.findall(r'<entry name="([^"]+)"', open('contents/config/main.xml').read()))
+          bound = set(re.findall(r'name="kcfg_([^"]+)"', open('contents/ui/config.ui').read()))
+          missing, extra = keys - bound, bound - keys
+          if missing: print(f"::error::Config keys with no widget in config.ui: {sorted(missing)}")
+          if extra:   print(f"::error::Widgets with no key in main.xml: {sorted(extra)}")
+          sys.exit(1 if (missing or extra) else 0)
+          EOF
+
+      # QUiLoader refuses child elements inside <string>, so raw markup such as
+      # <b>Slot</b> makes the config dialog fail to load at runtime with
+      # "Unexpected element b". Plain XML validation does not catch it: <b> is
+      # perfectly well-formed, it is just not allowed here. Markup has to be
+      # written as entities (&lt;b&gt;).
+      - name: Check for raw markup inside config.ui strings
+        run: |
+          python3 - <<'EOF'
+          import sys, xml.etree.ElementTree as ET
+          bad = [e for e in ET.parse('contents/ui/config.ui').iter('string') if len(e)]
+          for e in bad:
+              print(f"::error::<string> contains raw <{list(e)[0].tag}> markup; escape it as entities")
+          sys.exit(1 if bad else 0)
+          EOF
+
+      # The real parser, when the runner has Qt available.
+      - name: Compile config.ui with uic
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq qt6-base-dev-tools
+          /usr/lib/qt6/bin/uic contents/ui/config.ui > /dev/null
+          echo "config.ui compiles cleanly."
+
+      - name: Check metadata version matches tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          VER=$(python3 -c "import json; print(json.load(open('metadata.json'))['KPlugin']['Version'])")
+          echo "Tag version: $TAG / metadata.json version: $VER"
+          if [ "$TAG" != "$VER" ]; then
+            echo "::warning::Tag ($TAG) does not match metadata.json Version ($VER). Consider bumping the Version field."
+          fi
+
+      - name: Build .kwinscript
+        run: |
+          zip -r -X kde-special-workspace.kwinscript metadata.json contents LICENSE
+          unzip -l kde-special-workspace.kwinscript
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kde-special-workspace
+          path: kde-special-workspace.kwinscript
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: kde-special-workspace.kwinscript
+          generate_release_notes: true

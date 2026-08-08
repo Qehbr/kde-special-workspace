@@ -1,0 +1,8 @@
+*.kwinscript
+kde-special-workspace.kwinscript
+
+# GIF source recordings (the built .gif is committed)
+*.webm
+
+# editor / tooling
+.claude/

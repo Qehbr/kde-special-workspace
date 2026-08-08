@@ -1,0 +1,25 @@
+{
+    "KPackageStructure": "KWin/Script",
+    "KPlugin": {
+        "Name": "Special Workspace",
+        "Description": "Hyprland-style special workspaces and scratchpads: stash windows out of the way and toggle them back with a keypress",
+        "Category": "Window Management",
+        "Icon": "preferences-system-windows",
+        "Authors": [
+            {
+                "Email": "qehbr@yahoo.com",
+                "Name": "Yuriy Rusanov"
+            }
+        ],
+        "Id": "kde-special-workspace",
+        "Version": "1.0",
+        "License": "GPL-2.0+",
+        "EnabledByDefault": false,
+        "Website": "https://github.com/Qehbr/kde-special-workspace"
+    },
+    "X-Plasma-API": "javascript",
+    "X-Plasma-MainScript": "code/main.js",
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "X-KDE-ConfigModule": "kwin/effects/configs/kcm_kwin4_genericscripted",
+    "X-KDE-PluginKeyword": "kde-special-workspace"
+}

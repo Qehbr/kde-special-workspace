@@ -53,11 +53,16 @@ jobs:
           sys.exit(1 if bad else 0)
           EOF
 
-      # The real parser, when the runner has Qt available.
+      # The real parser, when the runner has Qt available. uic is not on PATH on
+      # Ubuntu and lives under libexec rather than bin, so locate it rather than
+      # hard-coding a path that differs between distributions.
       - name: Compile config.ui with uic
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq qt6-base-dev-tools
-          /usr/lib/qt6/bin/uic contents/ui/config.ui > /dev/null
+          UIC=$(command -v uic6 || command -v uic || find /usr/lib -type f -name uic -perm -u+x 2>/dev/null | head -1)
+          if [ -z "$UIC" ]; then echo "::error::uic not found after installing qt6-base-dev-tools"; exit 1; fi
+          echo "Using $UIC"
+          "$UIC" contents/ui/config.ui > /dev/null
           echo "config.ui compiles cleanly."
 
       - name: Check metadata version matches tag

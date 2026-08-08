@@ -35,7 +35,7 @@ KDE Plasma **6.0** or later. This script uses the Plasma 6 KWin scripting API (`
 
 **System Settings → Window Management → KWin Scripts → Get New Scripts…**, search for **Special Workspace**, and install.
 
-Or download the `.kwinscript` file from the [store page](https://store.kde.org/) or the [releases page](https://github.com/Qehbr/kde-special-workspace/releases) and install it with:
+Or download the `.kwinscript` file from the [KDE Store page](https://store.kde.org/p/2368111/) or the [releases page](https://github.com/Qehbr/kde-special-workspace/releases) and install it with:
 
 ```bash
 kpackagetool6 --type=KWin/Script --install kde-special-workspace.kwinscript
@@ -134,6 +134,7 @@ System Settings → Window Management → KWin Scripts → ⚙ next to **Special
 | Number of slots | 4 | How many slots get a toggle shortcut (1–12). See the caveat below before lowering it |
 | Width of a shown window | 75% | Width as a percentage of the usable screen area (panels excluded) |
 | Height of a shown window | 83% | Height as a percentage of the usable screen area |
+| Resize and centre windows when showing them | Enabled | Turn off if you use a tiling script — the window is shown and focused, and the tiler places it. The width, height and per-slot overrides are then ignored |
 | Always show on the focused screen | Enabled | Show the window on the monitor you are using now, instead of the one it was hidden from |
 | Bring to the current virtual desktop | Enabled | A hidden window follows you back to whichever desktop you are on |
 | When a window is hidden | Minimize it | Minimize only, or minimize and park on a virtual desktop |
@@ -172,6 +173,13 @@ If you would rather keep windows centred, do the opposite: leave centring on and
 - **"Also hide from task manager and pager"** sets `skipTaskbar`/`skipPager` on hidden windows and restores the original values when they are shown again. If you disable or uninstall the script while windows are hidden, those flags stay set and the windows remain hidden from the taskbar — they are still reachable via Alt+Tab. Bind **Restore all hidden windows** and press it before disabling the script, or turn this option off if you would rather not have the flags touched at all.
 - **Parking mode** needs at least two virtual desktops. With only one configured it silently falls back to plain minimizing. Parked windows are visible if you switch to the parking desktop yourself; that is by design, and mirrors how Hyprland's special workspaces behave.
 - Only normal windows can be hidden. Dialogs, panels, docks and notifications are skipped.
+
+---
+
+## Links
+
+- [KDE Store](https://store.kde.org/p/2368111/) — also reachable as [opendesktop.org/p/2368111](https://www.opendesktop.org/p/2368111/); same listing, same backend
+- [Releases](https://github.com/Qehbr/kde-special-workspace/releases) — the packaged `.kwinscript`
 
 ---
 

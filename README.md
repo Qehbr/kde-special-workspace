@@ -109,7 +109,7 @@ All shortcuts live in **System Settings → Shortcuts → KWin** and can be rebo
 | Toggle slot 1–4 | `Meta+F1`–`F4` | One key both ways: shows the slot's window, or hides it if it is already on the current desktop |
 | Toggle slot 5–12 | *unbound* | As above, once you raise the slot count |
 | Show focused window's class | *unbound* | On-screen readout of class, name and title — bind it while setting up your slots |
-| Restore all hidden windows | *unbound* | Bring back everything the script has hidden |
+| Restore all hidden windows | *unbound* | Bring back everything the script has hidden. Windows from per-desktop slots come back on their own desktop |
 
 Only the slots you have configured register a shortcut, so the list stays short. With the default of 4 slots that is six entries in total.
 
@@ -147,7 +147,7 @@ System Settings → Window Management → KWin Scripts → ⚙ next to **Special
 | Setting | Default | Description |
 |---------|---------|-------------|
 | Window matcher | *empty* | See [Window matchers](#window-matchers). A slot with an empty matcher does nothing |
-| Per desktop | Disabled | Give this slot a separate window on each virtual desktop; when disabled, use the original global behavior |
+| Per desktop | Disabled | Give this slot a separate window on each virtual desktop. It only uses windows on the current desktop, and hides them by minimizing in place rather than parking them |
 | Width | 0% | Per-slot override; 0 uses the General default |
 | Height | 0% | Per-slot override; 0 uses the General default |
 
@@ -172,7 +172,7 @@ If you would rather keep windows centred, do the opposite: leave centring on and
 
 - **Clear a slot's shortcut before lowering the slot count.** Raising the count is free; lowering it is not. Plasma remembers a binding for as long as the action exists, and a slot that is no longer registered disappears from System Settings while *still holding its key* — leaving it reserved by something you can no longer see or edit. So if slot 6 is bound to `Meta+F6` and you drop to 4 slots, `Meta+F6` stays claimed. Unbind it in **System Settings → Shortcuts → KWin** first, while the slot is still listed. (The script cannot do this for you: kglobalaccel's `setShortcut` takes a string list plus a list of key codes, and the scripting API's `callDBus` cannot marshal that signature.)
 - **"Also hide from task manager and pager"** sets `skipTaskbar`/`skipPager` on hidden windows and restores the original values when they are shown again. If you disable or uninstall the script while windows are hidden, those flags stay set and the windows remain hidden from the taskbar — they are still reachable via Alt+Tab. Bind **Restore all hidden windows** and press it before disabling the script, or turn this option off if you would rather not have the flags touched at all.
-- **Parking mode** needs at least two virtual desktops. With only one configured it silently falls back to plain minimizing. Ordinary slots park windows exclusively on the parking desktop, as before. Per-desktop slots keep their home desktop membership too, so each slot can find its own window after a script reload. Windows parked by older versions on *only* the parking desktop cannot be assigned to their old home desktop automatically: move them back once before trying the slot again.
+- **Parking mode** needs at least two virtual desktops. With only one configured it silently falls back to plain minimizing. Per-desktop slots never park: they find their window by the desktop it is on, so they minimize it where it is. A window an ordinary slot has parked is on the parking desktop only, so move it back to its own desktop before using it with a per-desktop slot.
 - Only normal windows can be hidden. Dialogs, panels, docks and notifications are skipped.
 
 ---

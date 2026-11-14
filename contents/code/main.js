@@ -210,14 +210,10 @@ function bindingKey(slot){
     return cfg.slots[slot - 1].perDesktop ? slot + ":" + String(workspace.currentDesktop.id) : String(slot);
 }
 
-// Ignore windows on other desktops and windows pinned to all desktops.
-// Parked windows retain their home desktop as well as the parking desktop.
+// Whether a per-desktop slot may use w on the given desktop. Windows on other
+// desktops are ignored, and so are windows pinned to all desktops.
 function belongsToDesktop(w, desktopId){
     if(!w || !w.desktops || w.desktops.length === 0){
-        return false;
-    }
-    var parking = cfg.hideMode === 1 ? specialDesktop() : null;
-    if(parking && w.minimized && w.desktops.length > 1 && desktopId === String(parking.id)){
         return false;
     }
     for(var i = 0; i < w.desktops.length; i++){
@@ -362,34 +358,18 @@ function moveToDesktop(w, desktop){
     }
 }
 
-// Keep the original desktop(s) on the window itself, rather than only in
-// script memory: a script reload must not turn parked windows into windows
-// that can only be found from the parking desktop.
-function parkWindow(w, desktop){
-    if(!desktop || !w.desktops || w.desktops.length === 0){
-        return;
-    }
-    var desktops = [];
-    for(var i = 0; i < w.desktops.length; i++){
-        if(String(w.desktops[i].id) === String(desktop.id)){
-            return;
-        }
-        desktops.push(w.desktops[i]);
-    }
-    desktops.push(desktop);
-    w.desktops = desktops;
-}
-
 // ---------------------------------------------------------- show and hide ---
 
 function showWindow(w, slot){
     var id = idOf(w);
     var prev = stashed[id];
 
-    // Restore-all leaves per-desktop windows on the desktop where they were hidden.
-    if(slot === 0 && prev && prev.desktops){
-        w.desktops = prev.desktops;
-    } else if(cfg.followCurrentDesktop || cfg.hideMode === 1){
+    // A window hidden by a per-desktop slot never left its desktop, and such a
+    // slot only picks windows on the current one, so there is nothing to move.
+    // Restore all (slot 0) leaves these windows where they are rather than
+    // gathering them onto this desktop.
+    var perDesktop = slot ? cfg.slots[slot - 1].perDesktop : !!(prev && prev.perDesktop);
+    if(!perDesktop && (cfg.followCurrentDesktop || cfg.hideMode === 1)){
         moveToDesktop(w, workspace.currentDesktop);
     }
 
@@ -400,6 +380,13 @@ function showWindow(w, slot){
         w.skipTaskbar = prev.skipTaskbar;
         w.skipPager = prev.skipPager;
         delete stashed[id];
+    }
+
+    // Activating a window that is on another desktop makes KWin switch to that
+    // desktop, so a per-desktop window living elsewhere is only unminimized.
+    if(perDesktop && !isOnCurrentDesktop(w)){
+        w.minimized = false;
+        return;
     }
 
     // Hands placement to whatever else is managing windows -- a tiling script
@@ -442,18 +429,13 @@ function showWindow(w, slot){
 
 function hideWindow(w, slot){
     var id = idOf(w);
+    var perDesktop = cfg.slots[slot - 1].perDesktop;
 
     if(!stashed[id]){
         stashed[id] = {skipTaskbar: w.skipTaskbar, skipPager: w.skipPager};
-        if(cfg.slots[slot - 1].perDesktop){
-            // Save home membership for restore-all before adding the parking desktop.
-            var desktops = [];
-            for(var i = 0; i < w.desktops.length; i++){
-                desktops.push(w.desktops[i]);
-            }
-            stashed[id].desktops = desktops;
-        }
     }
+    // Restore all leaves a window hidden this way on its own desktop.
+    stashed[id].perDesktop = perDesktop;
 
     // Minimize before parking. Minimizing hands focus to the next window
     // through KWin's normal path, while the window is still on the current
@@ -466,12 +448,12 @@ function hideWindow(w, slot){
         w.skipPager = true;
     }
 
-    if(cfg.hideMode === 1){
-        if(cfg.slots[slot - 1].perDesktop){
-            parkWindow(w, specialDesktop());
-        } else {
-            moveToDesktop(w, specialDesktop());
-        }
+    // A per-desktop slot never parks: it finds its window by the desktop the
+    // window is on, including after a script reload, so the window has to stay
+    // there. Adding the parking desktop alongside it is no way out either --
+    // on X11 a window can only be on one desktop, and KWin keeps the last.
+    if(cfg.hideMode === 1 && !perDesktop){
+        moveToDesktop(w, specialDesktop());
     }
 }
 
@@ -479,9 +461,10 @@ function hideWindow(w, slot){
 // `active` would make the toggle re-focus a visible-but-unfocused window on the
 // first press and hide it on the second, which reads as a missed keypress.
 function isShown(w){
-    if(w.minimized){
-        return false;
-    }
+    return !w.minimized && isOnCurrentDesktop(w);
+}
+
+function isOnCurrentDesktop(w){
     if(w.desktops.length === 0){
         return true;
     }

@@ -68,7 +68,7 @@ Examples:   spotify   |   class:org.kde.dolphin   |   title:*Scratch*   |   re:^
 
 To find out what to type, bind the &quot;Show focused window's class&quot; shortcut under System Settings &gt; Shortcuts &gt; KWin, then press it while the window is focused.
 
-Per desktop: unchecked keeps the original global slot behavior; checked restricts the slot to the current virtual desktop. Slots do not launch applications.
+Per desktop: the slot keeps a separate window for each virtual desktop and only uses windows on the current one. It hides them by minimizing in place, even when hidden windows are otherwise parked. Slots do not launch applications.
 
 A width or height of 0 means the slot uses the General defaults. Rows past the configured slot count have no shortcut and are inactive.</string></property>
         <property name="wordWrap"><bool>true</bool></property></widget></item>

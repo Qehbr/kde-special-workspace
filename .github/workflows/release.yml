@@ -26,6 +26,12 @@ jobs:
           test -f contents/code/main.js
           echo "Package structure looks valid."
 
+      # The tests load main.js into a Node sandbox with a mocked KWin workspace.
+      # List the files: given a directory, `node --test` treats it as a single
+      # test file and fails.
+      - name: Run tests
+        run: node --test tests/*.test.js
+
       - name: Check that every config key has a widget
         run: |
           python3 - <<'EOF'

@@ -14,6 +14,7 @@ var stashed = {};
 // The window each slot last acted on, keyed by slot number. This is what makes
 // a slot stable: once a slot has shown a window, the same window keeps coming
 // back even when several windows share a resource class.
+// One binding per slot by default; opt-in slots bind per virtual desktop ID.
 var bound = {};
 
 var cfg = {};
@@ -59,18 +60,26 @@ function loadConfig(){
 
     for(var i = 1; i <= MAX_SLOTS; i++){
         var matcher = str("slot" + i + "Matcher", "");
+        var perDesktop = bool("slot" + i + "PerDesktop", false);
 
         // A slot remembers the window it last acted on, and that memory
         // outranks the matcher so repeated toggles stay on one window. Editing
         // a matcher would therefore appear to do nothing -- the slot would keep
         // serving the window it already latched onto. Forget it when the
-        // matcher actually changes, so the new one is consulted immediately.
-        if(previous[i - 1] !== undefined && previous[i - 1].matcher !== matcher){
+        // matcher or scope actually changes, so the new one is consulted immediately.
+        if(previous[i - 1] !== undefined &&
+           (previous[i - 1].matcher !== matcher || previous[i - 1].perDesktop !== perDesktop)){
             delete bound[i];
+            for(var key in bound){
+                if(key.indexOf(i + ":") === 0){
+                    delete bound[key];
+                }
+            }
         }
 
         cfg.slots.push({
             matcher: matcher,
+            perDesktop: perDesktop,
             width: num("slot" + i + "Width", 0) / 100,
             height: num("slot" + i + "Height", 0) / 100
         });
@@ -197,6 +206,44 @@ function idOf(w){
     return String(w.internalId);
 }
 
+function bindingKey(slot){
+    return cfg.slots[slot - 1].perDesktop ? slot + ":" + String(workspace.currentDesktop.id) : String(slot);
+}
+
+// Whether a per-desktop slot may use w on the given desktop. Windows on other
+// desktops are ignored, and so are windows pinned to all desktops.
+function belongsToDesktop(w, desktopId){
+    if(!w || !w.desktops || w.desktops.length === 0){
+        return false;
+    }
+    for(var i = 0; i < w.desktops.length; i++){
+        if(String(w.desktops[i].id) === desktopId){
+            return true;
+        }
+    }
+    return false;
+}
+
+// Keep per-desktop reservations separate; global slots retain the original
+// unrestricted matching behavior. Drop stale ones after a manual move.
+function reservedByOtherBinding(w, key){
+    var id = idOf(w);
+    for(var other in bound){
+        if(other === key || bound[other] !== id){
+            continue;
+        }
+        var sep = other.indexOf(":");
+        if(sep < 0){
+            continue;
+        }
+        if(belongsToDesktop(w, other.substring(sep + 1))){
+            return true;
+        }
+        delete bound[other];
+    }
+    return false;
+}
+
 function findById(id){
     if(!id){
         return null;
@@ -217,9 +264,15 @@ function findById(id){
 // stashed, then the topmost match. The middle step keeps a toggle returning to
 // the same window when a matcher is broad enough to catch several.
 function resolve(slot){
-    var remembered = findById(bound[slot]);
-    if(remembered){
+    var perDesktop = cfg.slots[slot - 1].perDesktop;
+    var key = bindingKey(slot);
+    var desktopId = perDesktop ? String(workspace.currentDesktop.id) : null;
+    var remembered = findById(bound[key]);
+    if(remembered && (!perDesktop || belongsToDesktop(remembered, desktopId))){
         return remembered;
+    }
+    if(perDesktop){
+        delete bound[key];
     }
 
     var rules = parseMatcher(cfg.slots[slot - 1].matcher);
@@ -234,7 +287,8 @@ function resolve(slot){
     // most recently raised window first.
     for(var i = order.length - 1; i >= 0; i--){
         var w = order[i];
-        if(!isManageable(w) || !matches(w, rules)){
+        if(!isManageable(w) || !matches(w, rules) ||
+           (perDesktop && (!belongsToDesktop(w, desktopId) || reservedByOtherBinding(w, key)))){
             continue;
         }
         if(stashed[idOf(w)]){
@@ -308,19 +362,31 @@ function moveToDesktop(w, desktop){
 
 function showWindow(w, slot){
     var id = idOf(w);
+    var prev = stashed[id];
 
-    if(cfg.followCurrentDesktop || cfg.hideMode === 1){
+    // A window hidden by a per-desktop slot never left its desktop, and such a
+    // slot only picks windows on the current one, so there is nothing to move.
+    // Restore all (slot 0) leaves these windows where they are rather than
+    // gathering them onto this desktop.
+    var perDesktop = slot ? cfg.slots[slot - 1].perDesktop : !!(prev && prev.perDesktop);
+    if(!perDesktop && (cfg.followCurrentDesktop || cfg.hideMode === 1)){
         moveToDesktop(w, workspace.currentDesktop);
     }
 
     // Restore the flags the application originally set rather than clearing
     // them: a window that asked to stay out of the taskbar should still be out
     // of it after passing through the scratchpad.
-    var prev = stashed[id];
     if(prev){
         w.skipTaskbar = prev.skipTaskbar;
         w.skipPager = prev.skipPager;
         delete stashed[id];
+    }
+
+    // Activating a window that is on another desktop makes KWin switch to that
+    // desktop, so a per-desktop window living elsewhere is only unminimized.
+    if(perDesktop && !isOnCurrentDesktop(w)){
+        w.minimized = false;
+        return;
     }
 
     // Hands placement to whatever else is managing windows -- a tiling script
@@ -361,12 +427,15 @@ function showWindow(w, slot){
     workspace.activeWindow = w;
 }
 
-function hideWindow(w){
+function hideWindow(w, slot){
     var id = idOf(w);
+    var perDesktop = cfg.slots[slot - 1].perDesktop;
 
     if(!stashed[id]){
         stashed[id] = {skipTaskbar: w.skipTaskbar, skipPager: w.skipPager};
     }
+    // Restore all leaves a window hidden this way on its own desktop.
+    stashed[id].perDesktop = perDesktop;
 
     // Minimize before parking. Minimizing hands focus to the next window
     // through KWin's normal path, while the window is still on the current
@@ -379,7 +448,11 @@ function hideWindow(w){
         w.skipPager = true;
     }
 
-    if(cfg.hideMode === 1){
+    // A per-desktop slot never parks: it finds its window by the desktop the
+    // window is on, including after a script reload, so the window has to stay
+    // there. Adding the parking desktop alongside it is no way out either --
+    // on X11 a window can only be on one desktop, and KWin keeps the last.
+    if(cfg.hideMode === 1 && !perDesktop){
         moveToDesktop(w, specialDesktop());
     }
 }
@@ -388,9 +461,10 @@ function hideWindow(w){
 // `active` would make the toggle re-focus a visible-but-unfocused window on the
 // first press and hide it on the second, which reads as a missed keypress.
 function isShown(w){
-    if(w.minimized){
-        return false;
-    }
+    return !w.minimized && isOnCurrentDesktop(w);
+}
+
+function isOnCurrentDesktop(w){
     if(w.desktops.length === 0){
         return true;
     }
@@ -413,7 +487,7 @@ function toggleSlot(slot){
         return;
     }
 
-    bound[slot] = idOf(w);
+    bound[bindingKey(slot)] = idOf(w);
 
     // One key, both directions: if the window is here on this desktop it goes
     // away, otherwise it comes back. Focus deliberately does not enter into it
@@ -421,7 +495,7 @@ function toggleSlot(slot){
     // visible-but-unfocused window into a two-press affair, where the first
     // press only raises it and reads as a missed keypress.
     if(isShown(w)){
-        hideWindow(w);
+        hideWindow(w, slot);
     } else {
         showWindow(w, slot);
     }

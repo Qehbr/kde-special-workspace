@@ -11,6 +11,9 @@ var MAX_SLOTS = 12;
 // flags unconditionally.
 var stashed = {};
 
+// The window each slot last acted on, keyed by slot number. This is what makes
+// a slot stable: once a slot has shown a window, the same window keeps coming
+// back even when several windows share a resource class.
 // One binding per slot by default; opt-in slots bind per virtual desktop ID.
 var bound = {};
 
@@ -21,68 +24,66 @@ var cfg = {};
 // readConfig hands back the default's type, but a user who clears a text field
 // yields an empty QString rather than the default, so strings are normalised
 // here instead of trusting the return value.
-function str(key, fallback) {
-  var v = readConfig(key, fallback);
-  return v === undefined || v === null ? fallback : String(v);
+function str(key, fallback){
+    var v = readConfig(key, fallback);
+    return (v === undefined || v === null) ? fallback : String(v);
 }
 
-function num(key, fallback) {
-  var v = parseInt(readConfig(key, fallback), 10);
-  return isNaN(v) ? fallback : v;
+function num(key, fallback){
+    var v = parseInt(readConfig(key, fallback), 10);
+    return isNaN(v) ? fallback : v;
 }
 
-function bool(key, fallback) {
-  var v = readConfig(key, fallback);
-  return v === true || v === "true" || v === 1 || v === "1";
+function bool(key, fallback){
+    var v = readConfig(key, fallback);
+    return (v === true || v === "true" || v === 1 || v === "1");
 }
 
-function loadConfig() {
-  // Kept from the previous load so that changed matchers can be detected
-  // below; on first call there is nothing to compare against.
-  var previous = cfg.slots || [];
+function loadConfig(){
+    // Kept from the previous load so that changed matchers can be detected
+    // below; on first call there is nothing to compare against.
+    var previous = cfg.slots || [];
 
-  cfg = {
-    widthRatio: num("widthRatio", 75) / 100,
-    heightRatio: num("heightRatio", 83) / 100,
-    placeWindows: bool("placeWindows", true),
-    centerOnActiveScreen: bool("centerOnActiveScreen", true),
-    followCurrentDesktop: bool("followCurrentDesktop", true),
-    hideMode: num("hideMode", 0),
-    hideFromTaskbar: bool("hideFromTaskbar", true),
-    specialDesktop: num("specialDesktop", -1),
-    showOsd: bool("showOsd", true),
-    slotCount: Math.max(1, Math.min(MAX_SLOTS, num("slotCount", 4))),
-    slots: [],
-  };
+    cfg = {
+        widthRatio: num("widthRatio", 75) / 100,
+        heightRatio: num("heightRatio", 83) / 100,
+        placeWindows: bool("placeWindows", true),
+        centerOnActiveScreen: bool("centerOnActiveScreen", true),
+        followCurrentDesktop: bool("followCurrentDesktop", true),
+        hideMode: num("hideMode", 0),
+        hideFromTaskbar: bool("hideFromTaskbar", true),
+        specialDesktop: num("specialDesktop", -1),
+        showOsd: bool("showOsd", true),
+        slotCount: Math.max(1, Math.min(MAX_SLOTS, num("slotCount", 4))),
+        slots: []
+    };
 
-  for (var i = 1; i <= MAX_SLOTS; i++) {
-    var matcher = str("slot" + i + "Matcher", "");
-    var perDesktop = bool("slot" + i + "PerDesktop", false);
+    for(var i = 1; i <= MAX_SLOTS; i++){
+        var matcher = str("slot" + i + "Matcher", "");
+        var perDesktop = bool("slot" + i + "PerDesktop", false);
 
-    // A slot remembers the window it last acted on, and that memory
-    // outranks the matcher so repeated toggles stay on one window. Editing
-    // a matcher would therefore appear to do nothing -- the slot would keep
-    // serving the window it already latched onto. Forget it when the
-    // matcher or scope actually changes, so the new one is consulted immediately.
-    if (
-      previous[i - 1] !== undefined &&
-      (previous[i - 1].matcher !== matcher || previous[i - 1].perDesktop !== perDesktop)
-    ) {
-      delete bound[i];
-      for (var key in bound) {
-        if (key.indexOf(i + ":") === 0) {
-          delete bound[key];
+        // A slot remembers the window it last acted on, and that memory
+        // outranks the matcher so repeated toggles stay on one window. Editing
+        // a matcher would therefore appear to do nothing -- the slot would keep
+        // serving the window it already latched onto. Forget it when the
+        // matcher or scope actually changes, so the new one is consulted immediately.
+        if(previous[i - 1] !== undefined &&
+           (previous[i - 1].matcher !== matcher || previous[i - 1].perDesktop !== perDesktop)){
+            delete bound[i];
+            for(var key in bound){
+                if(key.indexOf(i + ":") === 0){
+                    delete bound[key];
+                }
+            }
         }
-      }
-    }
 
-    cfg.slots.push({
-      matcher: matcher,
-      perDesktop: perDesktop,
-      width: num("slot" + i + "Width", 0) / 100,
-      height: num("slot" + i + "Height", 0) / 100,
-    });
-  }
+        cfg.slots.push({
+            matcher: matcher,
+            perDesktop: perDesktop,
+            width: num("slot" + i + "Width", 0) / 100,
+            height: num("slot" + i + "Height", 0) / 100
+        });
+    }
 }
 
 // --------------------------------------------------------------- matching ---
@@ -101,210 +102,208 @@ function loadConfig() {
 // Everything except 're:' is case-insensitive, and matches as a substring
 // unless the value contains '*', in which case it is an anchored glob. Exact
 // matching is spelled 're:^value$'.
-function parseMatcher(spec) {
-  var rules = [];
-  var parts = String(spec).split("|");
+function parseMatcher(spec){
+    var rules = [];
+    var parts = String(spec).split("|");
 
-  for (var i = 0; i < parts.length; i++) {
-    var raw = parts[i].trim();
-    if (!raw) {
-      continue;
+    for(var i = 0; i < parts.length; i++){
+        var raw = parts[i].trim();
+        if(!raw){
+            continue;
+        }
+
+        var field = "any";
+        var value = raw;
+        var sep = raw.indexOf(":");
+
+        if(sep > 0){
+            var head = raw.substring(0, sep).toLowerCase();
+            if(head === "class" || head === "name" || head === "title" || head === "re"){
+                field = head;
+                value = raw.substring(sep + 1).trim();
+            }
+        }
+
+        if(!value){
+            continue;
+        }
+
+        if(field === "re"){
+            // A malformed expression would otherwise throw on every keypress.
+            try {
+                rules.push({field: "re", re: new RegExp(value)});
+            } catch(e){
+                print("Special Workspace: bad regex in matcher: " + value);
+            }
+        } else if(value.indexOf("*") >= 0){
+            rules.push({field: field, re: globToRegExp(value)});
+        } else {
+            rules.push({field: field, text: value.toLowerCase()});
+        }
     }
 
-    var field = "any";
-    var value = raw;
-    var sep = raw.indexOf(":");
-
-    if (sep > 0) {
-      var head = raw.substring(0, sep).toLowerCase();
-      if (head === "class" || head === "name" || head === "title" || head === "re") {
-        field = head;
-        value = raw.substring(sep + 1).trim();
-      }
-    }
-
-    if (!value) {
-      continue;
-    }
-
-    if (field === "re") {
-      // A malformed expression would otherwise throw on every keypress.
-      try {
-        rules.push({ field: "re", re: new RegExp(value) });
-      } catch (e) {
-        print("Special Workspace: bad regex in matcher: " + value);
-      }
-    } else if (value.indexOf("*") >= 0) {
-      rules.push({ field: field, re: globToRegExp(value) });
-    } else {
-      rules.push({ field: field, text: value.toLowerCase() });
-    }
-  }
-
-  return rules;
+    return rules;
 }
 
-function globToRegExp(glob) {
-  var escaped = glob.replace(/[.+^${}()[\]\\]/g, "\\$&").replace(/\*/g, ".*");
-  return new RegExp("^" + escaped + "$", "i");
+function globToRegExp(glob){
+    var escaped = glob.replace(/[.+^${}()[\]\\]/g, "\\$&").replace(/\*/g, ".*");
+    return new RegExp("^" + escaped + "$", "i");
 }
 
-function fieldValue(w, field) {
-  if (field === "class") {
-    return w.resourceClass ? String(w.resourceClass) : "";
-  }
-  if (field === "name") {
-    return w.resourceName ? String(w.resourceName) : "";
-  }
-  if (field === "title") {
-    return w.caption ? String(w.caption) : "";
-  }
-  return "";
+function fieldValue(w, field){
+    if(field === "class"){
+        return w.resourceClass ? String(w.resourceClass) : "";
+    }
+    if(field === "name"){
+        return w.resourceName ? String(w.resourceName) : "";
+    }
+    if(field === "title"){
+        return w.caption ? String(w.caption) : "";
+    }
+    return "";
 }
 
-function ruleMatches(w, rule) {
-  // 're:' and bare rules span several fields, so both collapse to a list.
-  var fields =
-    rule.field === "any" ? ["class", "name"] : rule.field === "re" ? ["class", "name", "title"] : [rule.field];
+function ruleMatches(w, rule){
+    // 're:' and bare rules span several fields, so both collapse to a list.
+    var fields = rule.field === "any" ? ["class", "name"]
+               : rule.field === "re"  ? ["class", "name", "title"]
+               : [rule.field];
 
-  for (var i = 0; i < fields.length; i++) {
-    var value = fieldValue(w, fields[i]);
-    if (!value) {
-      continue;
+    for(var i = 0; i < fields.length; i++){
+        var value = fieldValue(w, fields[i]);
+        if(!value){
+            continue;
+        }
+        if(rule.re){
+            if(rule.re.test(value)){
+                return true;
+            }
+        } else if(value.toLowerCase().indexOf(rule.text) >= 0){
+            return true;
+        }
     }
-    if (rule.re) {
-      if (rule.re.test(value)) {
-        return true;
-      }
-    } else if (value.toLowerCase().indexOf(rule.text) >= 0) {
-      return true;
-    }
-  }
 
-  return false;
+    return false;
 }
 
-function matches(w, rules) {
-  for (var i = 0; i < rules.length; i++) {
-    if (ruleMatches(w, rules[i])) {
-      return true;
+function matches(w, rules){
+    for(var i = 0; i < rules.length; i++){
+        if(ruleMatches(w, rules[i])){
+            return true;
+        }
     }
-  }
-  return false;
+    return false;
 }
 
 // Windows we are willing to stash. Dialogs, docks, notifications and the like
 // are excluded: minimising a transient leaves its parent in a strange state,
 // and parking a panel would hide part of the desktop with no way back.
-function isManageable(w) {
-  return !!w && w.normalWindow === true && !w.deleted;
+function isManageable(w){
+    return !!w && w.normalWindow === true && !w.deleted;
 }
 
-function idOf(w) {
-  return String(w.internalId);
+function idOf(w){
+    return String(w.internalId);
 }
 
-function bindingKey(slot) {
-  return cfg.slots[slot - 1].perDesktop ? slot + ":" + String(workspace.currentDesktop.id) : String(slot);
+function bindingKey(slot){
+    return cfg.slots[slot - 1].perDesktop ? slot + ":" + String(workspace.currentDesktop.id) : String(slot);
 }
 
 // Ignore windows on other desktops and windows pinned to all desktops.
 // Parked windows retain their home desktop as well as the parking desktop.
-function belongsToDesktop(w, desktopId) {
-  if (!w || !w.desktops || w.desktops.length === 0) {
-    return false;
-  }
-  var parking = cfg.hideMode === 1 ? specialDesktop() : null;
-  if (parking && w.minimized && w.desktops.length > 1 && desktopId === String(parking.id)) {
-    return false;
-  }
-  for (var i = 0; i < w.desktops.length; i++) {
-    if (String(w.desktops[i].id) === desktopId) {
-      return true;
+function belongsToDesktop(w, desktopId){
+    if(!w || !w.desktops || w.desktops.length === 0){
+        return false;
     }
-  }
-  return false;
+    var parking = cfg.hideMode === 1 ? specialDesktop() : null;
+    if(parking && w.minimized && w.desktops.length > 1 && desktopId === String(parking.id)){
+        return false;
+    }
+    for(var i = 0; i < w.desktops.length; i++){
+        if(String(w.desktops[i].id) === desktopId){
+            return true;
+        }
+    }
+    return false;
 }
 
 // Keep per-desktop reservations separate; global slots retain the original
 // unrestricted matching behavior. Drop stale ones after a manual move.
-function reservedByOtherBinding(w, key) {
-  var id = idOf(w);
-  for (var other in bound) {
-    if (other === key || bound[other] !== id) {
-      continue;
+function reservedByOtherBinding(w, key){
+    var id = idOf(w);
+    for(var other in bound){
+        if(other === key || bound[other] !== id){
+            continue;
+        }
+        var sep = other.indexOf(":");
+        if(sep < 0){
+            continue;
+        }
+        if(belongsToDesktop(w, other.substring(sep + 1))){
+            return true;
+        }
+        delete bound[other];
     }
-    var sep = other.indexOf(":");
-    if (sep < 0) {
-      continue;
-    }
-    if (belongsToDesktop(w, other.substring(sep + 1))) {
-      return true;
-    }
-    delete bound[other];
-  }
-  return false;
+    return false;
 }
 
-function findById(id) {
-  if (!id) {
-    return null;
-  }
-
-  var order = workspace.stackingOrder;
-  for (var i = 0; i < order.length; i++) {
-    if (order[i] && idOf(order[i]) === id) {
-      return isManageable(order[i]) ? order[i] : null;
+function findById(id){
+    if(!id){
+        return null;
     }
-  }
 
-  return null;
+    var order = workspace.stackingOrder;
+    for(var i = 0; i < order.length; i++){
+        if(order[i] && idOf(order[i]) === id){
+            return isManageable(order[i]) ? order[i] : null;
+        }
+    }
+
+    return null;
 }
 
 // Resolves the window a slot should act on, in decreasing order of confidence:
 // the window the slot is already bound to, then a matching window we have
 // stashed, then the topmost match. The middle step keeps a toggle returning to
 // the same window when a matcher is broad enough to catch several.
-function resolve(slot) {
-  var perDesktop = cfg.slots[slot - 1].perDesktop;
-  var key = bindingKey(slot);
-  var desktopId = perDesktop ? String(workspace.currentDesktop.id) : null;
-  var remembered = findById(bound[key]);
-  if (remembered && (!perDesktop || belongsToDesktop(remembered, desktopId))) {
-    return remembered;
-  }
-  if (perDesktop) {
-    delete bound[key];
-  }
-
-  var rules = parseMatcher(cfg.slots[slot - 1].matcher);
-  if (rules.length === 0) {
-    return null;
-  }
-
-  var order = workspace.stackingOrder;
-  var topmost = null;
-
-  // stackingOrder runs bottom to top, so walking it backwards visits the
-  // most recently raised window first.
-  for (var i = order.length - 1; i >= 0; i--) {
-    var w = order[i];
-    if (
-      !isManageable(w) ||
-      !matches(w, rules) ||
-      (perDesktop && (!belongsToDesktop(w, desktopId) || reservedByOtherBinding(w, key)))
-    ) {
-      continue;
+function resolve(slot){
+    var perDesktop = cfg.slots[slot - 1].perDesktop;
+    var key = bindingKey(slot);
+    var desktopId = perDesktop ? String(workspace.currentDesktop.id) : null;
+    var remembered = findById(bound[key]);
+    if(remembered && (!perDesktop || belongsToDesktop(remembered, desktopId))){
+        return remembered;
     }
-    if (stashed[idOf(w)]) {
-      return w;
+    if(perDesktop){
+        delete bound[key];
     }
-    if (!topmost) {
-      topmost = w;
-    }
-  }
 
-  return topmost;
+    var rules = parseMatcher(cfg.slots[slot - 1].matcher);
+    if(rules.length === 0){
+        return null;
+    }
+
+    var order = workspace.stackingOrder;
+    var topmost = null;
+
+    // stackingOrder runs bottom to top, so walking it backwards visits the
+    // most recently raised window first.
+    for(var i = order.length - 1; i >= 0; i--){
+        var w = order[i];
+        if(!isManageable(w) || !matches(w, rules) ||
+           (perDesktop && (!belongsToDesktop(w, desktopId) || reservedByOtherBinding(w, key)))){
+            continue;
+        }
+        if(stashed[idOf(w)]){
+            return w;
+        }
+        if(!topmost){
+            topmost = w;
+        }
+    }
+
+    return topmost;
 }
 
 // ------------------------------------------------------------- geometry -----
@@ -313,254 +312,251 @@ function resolve(slot) {
 // the enum. Defaults to the screen the user is looking at, so a window stashed
 // on one monitor comes back on whichever monitor is now active, rather than
 // reappearing behind the user on the monitor it left from.
-function usableArea(w) {
-  try {
-    if (typeof KWin !== "undefined" && KWin.MaximizeArea !== undefined) {
-      if (cfg.centerOnActiveScreen) {
-        return workspace.clientArea(KWin.MaximizeArea, workspace.activeScreen, workspace.currentDesktop);
-      }
-      return workspace.clientArea(KWin.MaximizeArea, w);
+function usableArea(w){
+    try {
+        if(typeof KWin !== "undefined" && KWin.MaximizeArea !== undefined){
+            if(cfg.centerOnActiveScreen){
+                return workspace.clientArea(KWin.MaximizeArea, workspace.activeScreen,
+                                            workspace.currentDesktop);
+            }
+            return workspace.clientArea(KWin.MaximizeArea, w);
+        }
+    } catch(e){
+        // fall through to the raw output geometry
     }
-  } catch (e) {
-    // fall through to the raw output geometry
-  }
 
-  if (cfg.centerOnActiveScreen && workspace.activeScreen && workspace.activeScreen.geometry) {
+    if(cfg.centerOnActiveScreen && workspace.activeScreen && workspace.activeScreen.geometry){
+        return workspace.activeScreen.geometry;
+    }
+    if(w.output && w.output.geometry){
+        return w.output.geometry;
+    }
     return workspace.activeScreen.geometry;
-  }
-  if (w.output && w.output.geometry) {
-    return w.output.geometry;
-  }
-  return workspace.activeScreen.geometry;
 }
 
 // Resolves the parking desktop to a KWin VirtualDesktop, or null if we should
 // not move windows at all. Never returns an out-of-range desktop:
 // workspace.desktops shrinks when the user removes virtual desktops, and
 // handing KWin an undefined desktop is what breaks hiding.
-function specialDesktop() {
-  var all = workspace.desktops;
-  if (!all || all.length < 2) {
-    return null;
-  }
+function specialDesktop(){
+    var all = workspace.desktops;
+    if(!all || all.length < 2){
+        return null;
+    }
 
-  var idx = cfg.specialDesktop < 0 ? all.length - 1 : cfg.specialDesktop;
-  if (idx < 0 || idx >= all.length) {
-    return null;
-  }
+    var idx = cfg.specialDesktop < 0 ? all.length - 1 : cfg.specialDesktop;
+    if(idx < 0 || idx >= all.length){
+        return null;
+    }
 
-  return all[idx];
+    return all[idx];
 }
 
 // `desktops` is a whole-list property (KWin::Window::setDesktops), so assign a
 // new array. Writing desktops[0] instead mutates Qt's sequence wrapper and only
 // reaches KWin through a write-back path.
 // An empty list means "on all desktops" -- leave those windows alone.
-function moveToDesktop(w, desktop) {
-  if (desktop && w.desktops.length > 0) {
-    w.desktops = [desktop];
-  }
+function moveToDesktop(w, desktop){
+    if(desktop && w.desktops.length > 0){
+        w.desktops = [desktop];
+    }
 }
 
 // Keep the original desktop(s) on the window itself, rather than only in
 // script memory: a script reload must not turn parked windows into windows
 // that can only be found from the parking desktop.
-function parkWindow(w, desktop) {
-  if (!desktop || !w.desktops || w.desktops.length === 0) {
-    return;
-  }
-  var desktops = [];
-  for (var i = 0; i < w.desktops.length; i++) {
-    if (String(w.desktops[i].id) === String(desktop.id)) {
-      return;
+function parkWindow(w, desktop){
+    if(!desktop || !w.desktops || w.desktops.length === 0){
+        return;
     }
-    desktops.push(w.desktops[i]);
-  }
-  desktops.push(desktop);
-  w.desktops = desktops;
+    var desktops = [];
+    for(var i = 0; i < w.desktops.length; i++){
+        if(String(w.desktops[i].id) === String(desktop.id)){
+            return;
+        }
+        desktops.push(w.desktops[i]);
+    }
+    desktops.push(desktop);
+    w.desktops = desktops;
 }
 
 // ---------------------------------------------------------- show and hide ---
 
-function showWindow(w, slot) {
-  var id = idOf(w);
-  var prev = stashed[id];
+function showWindow(w, slot){
+    var id = idOf(w);
+    var prev = stashed[id];
 
-  // Restore-all leaves per-desktop windows on the desktop where they were hidden.
-  if (slot === 0 && prev && prev.desktops) {
-    w.desktops = prev.desktops;
-  } else if (cfg.followCurrentDesktop || cfg.hideMode === 1) {
-    moveToDesktop(w, workspace.currentDesktop);
-  }
-
-  // Restore the flags the application originally set rather than clearing
-  // them: a window that asked to stay out of the taskbar should still be out
-  // of it after passing through the scratchpad.
-  if (prev) {
-    w.skipTaskbar = prev.skipTaskbar;
-    w.skipPager = prev.skipPager;
-    delete stashed[id];
-  }
-
-  // Hands placement to whatever else is managing windows -- a tiling script
-  // such as Krohnkite will arrange the window itself, and a rect assigned
-  // here would only be overwritten a moment later.
-  //
-  // The ordering matters and is not incidental. Activating a minimized window
-  // is what brings it back; clearing `minimized` first would let the tiler
-  // see the window reappear while it is still unfocused, which typically
-  // lands it in a stack column rather than the master area.
-  if (!cfg.placeWindows) {
-    workspace.activeWindow = w;
-    if (w.minimized) {
-      w.minimized = false;
+    // Restore-all leaves per-desktop windows on the desktop where they were hidden.
+    if(slot === 0 && prev && prev.desktops){
+        w.desktops = prev.desktops;
+    } else if(cfg.followCurrentDesktop || cfg.hideMode === 1){
+        moveToDesktop(w, workspace.currentDesktop);
     }
-    return;
-  }
 
-  w.minimized = false;
+    // Restore the flags the application originally set rather than clearing
+    // them: a window that asked to stay out of the taskbar should still be out
+    // of it after passing through the scratchpad.
+    if(prev){
+        w.skipTaskbar = prev.skipTaskbar;
+        w.skipPager = prev.skipPager;
+        delete stashed[id];
+    }
 
-  var area = usableArea(w);
-  var slotCfg = slot ? cfg.slots[slot - 1] : null;
-  var wRatio = slotCfg && slotCfg.width > 0 ? slotCfg.width : cfg.widthRatio;
-  var hRatio = slotCfg && slotCfg.height > 0 ? slotCfg.height : cfg.heightRatio;
+    // Hands placement to whatever else is managing windows -- a tiling script
+    // such as Krohnkite will arrange the window itself, and a rect assigned
+    // here would only be overwritten a moment later.
+    //
+    // The ordering matters and is not incidental. Activating a minimized window
+    // is what brings it back; clearing `minimized` first would let the tiler
+    // see the window reappear while it is still unfocused, which typically
+    // lands it in a stack column rather than the master area.
+    if(!cfg.placeWindows){
+        workspace.activeWindow = w;
+        if(w.minimized){
+            w.minimized = false;
+        }
+        return;
+    }
 
-  var width = Math.round(area.width * wRatio);
-  var height = Math.round(area.height * hRatio);
+    w.minimized = false;
 
-  // Assign the rect in one go; mutating frameGeometry.width in place edits a
-  // temporary copy of the value type rather than the window.
-  w.frameGeometry = {
-    x: Math.round(area.x + (area.width - width) / 2),
-    y: Math.round(area.y + (area.height - height) / 2),
-    width: width,
-    height: height,
-  };
+    var area = usableArea(w);
+    var slotCfg = slot ? cfg.slots[slot - 1] : null;
+    var wRatio = (slotCfg && slotCfg.width > 0) ? slotCfg.width : cfg.widthRatio;
+    var hRatio = (slotCfg && slotCfg.height > 0) ? slotCfg.height : cfg.heightRatio;
 
-  workspace.activeWindow = w;
+    var width = Math.round(area.width * wRatio);
+    var height = Math.round(area.height * hRatio);
+
+    // Assign the rect in one go; mutating frameGeometry.width in place edits a
+    // temporary copy of the value type rather than the window.
+    w.frameGeometry = {
+        x: Math.round(area.x + (area.width - width) / 2),
+        y: Math.round(area.y + (area.height - height) / 2),
+        width: width,
+        height: height
+    };
+
+    workspace.activeWindow = w;
 }
 
-function hideWindow(w, slot) {
-  var id = idOf(w);
+function hideWindow(w, slot){
+    var id = idOf(w);
 
-  if (!stashed[id]) {
-    stashed[id] = { skipTaskbar: w.skipTaskbar, skipPager: w.skipPager };
-    if (cfg.slots[slot - 1].perDesktop) {
-      // Save home membership for restore-all before adding the parking desktop.
-      var desktops = [];
-      for (var i = 0; i < w.desktops.length; i++) {
-        desktops.push(w.desktops[i]);
-      }
-      stashed[id].desktops = desktops;
+    if(!stashed[id]){
+        stashed[id] = {skipTaskbar: w.skipTaskbar, skipPager: w.skipPager};
+        if(cfg.slots[slot - 1].perDesktop){
+            // Save home membership for restore-all before adding the parking desktop.
+            var desktops = [];
+            for(var i = 0; i < w.desktops.length; i++){
+                desktops.push(w.desktops[i]);
+            }
+            stashed[id].desktops = desktops;
+        }
     }
-  }
 
-  // Minimize before parking. Minimizing hands focus to the next window
-  // through KWin's normal path, while the window is still on the current
-  // desktop; pulling it off-desktop first makes KWin do that focus transfer
-  // against a window that is no longer where it thinks it is.
-  w.minimized = true;
+    // Minimize before parking. Minimizing hands focus to the next window
+    // through KWin's normal path, while the window is still on the current
+    // desktop; pulling it off-desktop first makes KWin do that focus transfer
+    // against a window that is no longer where it thinks it is.
+    w.minimized = true;
 
-  if (cfg.hideFromTaskbar) {
-    w.skipTaskbar = true;
-    w.skipPager = true;
-  }
-
-  if (cfg.hideMode === 1) {
-    if (cfg.slots[slot - 1].perDesktop) {
-      parkWindow(w, specialDesktop());
-    } else {
-      moveToDesktop(w, specialDesktop());
+    if(cfg.hideFromTaskbar){
+        w.skipTaskbar = true;
+        w.skipPager = true;
     }
-  }
+
+    if(cfg.hideMode === 1){
+        if(cfg.slots[slot - 1].perDesktop){
+            parkWindow(w, specialDesktop());
+        } else {
+            moveToDesktop(w, specialDesktop());
+        }
+    }
 }
 
 // A window counts as shown when it is on screen here and now. Checking only
 // `active` would make the toggle re-focus a visible-but-unfocused window on the
 // first press and hide it on the second, which reads as a missed keypress.
-function isShown(w) {
-  if (w.minimized) {
+function isShown(w){
+    if(w.minimized){
+        return false;
+    }
+    if(w.desktops.length === 0){
+        return true;
+    }
+    // Compare by id as well as identity: KWin hands out fresh JS wrappers for
+    // the same VirtualDesktop, so `===` alone is not dependable here.
+    var current = workspace.currentDesktop;
+    for(var i = 0; i < w.desktops.length; i++){
+        var d = w.desktops[i];
+        if(d === current || (d && current && String(d.id) === String(current.id))){
+            return true;
+        }
+    }
     return false;
-  }
-  if (w.desktops.length === 0) {
-    return true;
-  }
-  // Compare by id as well as identity: KWin hands out fresh JS wrappers for
-  // the same VirtualDesktop, so `===` alone is not dependable here.
-  var current = workspace.currentDesktop;
-  for (var i = 0; i < w.desktops.length; i++) {
-    var d = w.desktops[i];
-    if (d === current || (d && current && String(d.id) === String(current.id))) {
-      return true;
-    }
-  }
-  return false;
 }
 
-function toggleSlot(slot) {
-  var w = resolve(slot);
-  if (!w) {
-    osd("Special Workspace " + slot + ": no matching window");
-    return;
-  }
+function toggleSlot(slot){
+    var w = resolve(slot);
+    if(!w){
+        osd("Special Workspace " + slot + ": no matching window");
+        return;
+    }
 
-  bound[bindingKey(slot)] = idOf(w);
+    bound[bindingKey(slot)] = idOf(w);
 
-  // One key, both directions: if the window is here on this desktop it goes
-  // away, otherwise it comes back. Focus deliberately does not enter into it
-  // -- requiring the window to be focused before it can be hidden turns a
-  // visible-but-unfocused window into a two-press affair, where the first
-  // press only raises it and reads as a missed keypress.
-  if (isShown(w)) {
-    hideWindow(w, slot);
-  } else {
-    showWindow(w, slot);
-  }
+    // One key, both directions: if the window is here on this desktop it goes
+    // away, otherwise it comes back. Focus deliberately does not enter into it
+    // -- requiring the window to be focused before it can be hidden turns a
+    // visible-but-unfocused window into a two-press affair, where the first
+    // press only raises it and reads as a missed keypress.
+    if(isShown(w)){
+        hideWindow(w, slot);
+    } else {
+        showWindow(w, slot);
+    }
 }
 
-function unstashAll() {
-  var order = workspace.stackingOrder;
-  var count = 0;
+function unstashAll(){
+    var order = workspace.stackingOrder;
+    var count = 0;
 
-  for (var i = 0; i < order.length; i++) {
-    var w = order[i];
-    if (isManageable(w) && stashed[idOf(w)]) {
-      showWindow(w, 0);
-      count++;
+    for(var i = 0; i < order.length; i++){
+        var w = order[i];
+        if(isManageable(w) && stashed[idOf(w)]){
+            showWindow(w, 0);
+            count++;
+        }
     }
-  }
 
-  osd(count > 0 ? "Restored " + count + " window(s)" : "Nothing was stashed");
+    osd(count > 0 ? "Restored " + count + " window(s)" : "Nothing was stashed");
 }
 
 // Replaces the usual "open the WM console and tail journalctl" ritual: focus a
 // window, press the key, and read the values a matcher needs off the screen.
-function identifyActive() {
-  var w = workspace.activeWindow;
-  if (!w) {
-    return;
-  }
+function identifyActive(){
+    var w = workspace.activeWindow;
+    if(!w){
+        return;
+    }
 
-  osd("class: " + w.resourceClass + "\nname: " + w.resourceName + "\ntitle: " + w.caption, true);
+    osd("class: " + w.resourceClass +
+        "\nname: " + w.resourceName +
+        "\ntitle: " + w.caption, true);
 }
 
-function osd(text, force) {
-  if (!cfg.showOsd && !force) {
-    return;
-  }
+function osd(text, force){
+    if(!cfg.showOsd && !force){
+        return;
+    }
 
-  try {
-    callDBus(
-      "org.kde.plasmashell",
-      "/org/kde/osdService",
-      "org.kde.osdService",
-      "showText",
-      "preferences-system-windows",
-      text,
-    );
-  } catch (e) {
-    print("Special Workspace: " + text);
-  }
+    try {
+        callDBus("org.kde.plasmashell", "/org/kde/osdService", "org.kde.osdService",
+                 "showText", "preferences-system-windows", text);
+    } catch(e){
+        print("Special Workspace: " + text);
+    }
 }
 
 // ---------------------------------------------------------------- startup ---
@@ -578,40 +574,36 @@ loadConfig();
 // The slot count is deliberately *not* re-applied here: registerShortcut can
 // only add actions, never retract them, so changing how many slots exist still
 // needs a real script reload.
-if (typeof options !== "undefined" && options.configChanged) {
-  options.configChanged.connect(loadConfig);
+if(typeof options !== "undefined" && options.configChanged){
+    options.configChanged.connect(loadConfig);
 }
 
 // A closed window leaves entries behind in both maps. They are harmless -- ids
 // are never reused -- but a long session with many short-lived windows would
 // grow them without bound.
-workspace.windowRemoved.connect(function (w) {
-  if (!w) {
-    return;
-  }
-  var id = idOf(w);
-  delete stashed[id];
-  for (var slot in bound) {
-    if (bound[slot] === id) {
-      delete bound[slot];
+workspace.windowRemoved.connect(function(w){
+    if(!w){
+        return;
     }
-  }
+    var id = idOf(w);
+    delete stashed[id];
+    for(var slot in bound){
+        if(bound[slot] === id){
+            delete bound[slot];
+        }
+    }
 });
 
 // The first string is the action name stored in kglobalshortcutsrc, the second
 // is the label shown in System Settings. Renaming the first orphans every
 // binding a user has made, so these stay fixed across releases.
-for (var slot = 1; slot <= cfg.slotCount; slot++) {
-  (function (n) {
-    registerShortcut(
-      "Special Workspace " + n,
-      "Special Workspace: Toggle slot " + n,
-      n <= 4 ? "Meta+F" + n : "",
-      function () {
-        toggleSlot(n);
-      },
-    );
-  })(slot);
+for(var slot = 1; slot <= cfg.slotCount; slot++){
+    (function(n){
+        registerShortcut("Special Workspace " + n,
+                         "Special Workspace: Toggle slot " + n,
+                         n <= 4 ? "Meta+F" + n : "",
+                         function(){ toggleSlot(n); });
+    })(slot);
 }
 
 // A slot above the configured count is simply not registered. Note that this
@@ -624,6 +616,10 @@ for (var slot = 1; slot <= cfg.slotCount; slot++) {
 // still listed there. This is why the default slot count is low: raising it is
 // free, lowering it is not.
 
-registerShortcut("Special Workspace Identify", "Special Workspace: Show focused window's class", "", identifyActive);
+registerShortcut("Special Workspace Identify",
+                 "Special Workspace: Show focused window's class",
+                 "", identifyActive);
 
-registerShortcut("Special Workspace Unstash All", "Special Workspace: Restore all hidden windows", "", unstashAll);
+registerShortcut("Special Workspace Unstash All",
+                 "Special Workspace: Restore all hidden windows",
+                 "", unstashAll);

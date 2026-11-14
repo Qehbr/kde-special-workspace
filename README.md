@@ -92,9 +92,12 @@ A matcher is a `|`-separated list of rules. Bare text matches the window's **cla
 | `name:kitty` | resource name contains `kitty` |
 | `title:*Scratch*` | window title matching the wildcard |
 | `re:^kitty$` | regular expression — use this for an exact match |
+| `re:^(spotify\|kitty)$` | regular expression with alternatives — still one rule |
 | `spotify\|LM Studio` | either rule matches |
 
-Rules are case-insensitive except `re:`, which is passed to the JavaScript regex engine as written. Any value containing `*` is treated as an anchored wildcard rather than a substring.
+Rules are case-insensitive except `re:`, which is passed to the JavaScript regex engine as written. Any value containing `*` is treated as an anchored wildcard rather than a substring; `*` is the only wildcard character, and everything else, `?` included, matches itself.
+
+Inside a `re:` rule, a `|` within parentheses or brackets, or escaped as `\|`, is part of the expression. A `|` outside them starts a new rule, so `re:^kitty$|spotify` is two rules.
 
 **When several windows match**, the slot picks, in order: the window it last acted on, then a matching window it has already hidden, then the topmost match. This means a broad matcher like `kitty` still toggles the *same* terminal every time instead of drifting between them.
 

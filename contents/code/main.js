@@ -104,7 +104,7 @@ function loadConfig(){
 // matching is spelled 're:^value$'.
 function parseMatcher(spec){
     var rules = [];
-    var parts = String(spec).split("|");
+    var parts = splitRules(String(spec));
 
     for(var i = 0; i < parts.length; i++){
         var raw = parts[i].trim();
@@ -145,8 +145,58 @@ function parseMatcher(spec){
     return rules;
 }
 
+// Splits a matcher into rules at each '|'. Inside an 're:' rule, a '|' within
+// parentheses or brackets, or escaped as '\|', belongs to the expression, so
+// 're:^(spotify|kitty)$' stays one rule. A '|' outside them still starts a new
+// rule, as before: 're:^kitty$|spotify' is two. Other rules are split at every
+// '|', since a title may well contain an unbalanced parenthesis.
+function splitRules(spec){
+    var parts = [];
+    var start = 0;
+    var regex = /^\s*re:/i.test(spec);
+    var depth = 0;
+    var inClass = false;
+
+    for(var i = 0; i < spec.length; i++){
+        var c = spec.charAt(i);
+
+        if(regex){
+            if(c === "\\"){
+                i++;
+                continue;
+            }
+            if(inClass){
+                inClass = c !== "]";
+                continue;
+            }
+            if(c === "["){
+                inClass = true;
+                continue;
+            }
+            if(c === "("){
+                depth++;
+                continue;
+            }
+            if(c === ")" && depth > 0){
+                depth--;
+                continue;
+            }
+        }
+
+        if(c === "|" && depth === 0){
+            parts.push(spec.substring(start, i));
+            start = i + 1;
+            regex = /^\s*re:/i.test(spec.substring(start));
+        }
+    }
+
+    parts.push(spec.substring(start));
+    return parts;
+}
+
+// Only '*' is a wildcard. Everything else, '?' included, matches itself.
 function globToRegExp(glob){
-    var escaped = glob.replace(/[.+^${}()[\]\\]/g, "\\$&").replace(/\*/g, ".*");
+    var escaped = glob.replace(/[.+?^${}()[\]\\]/g, "\\$&").replace(/\*/g, ".*");
     return new RegExp("^" + escaped + "$", "i");
 }
 
